@@ -110,7 +110,7 @@ void ExampleDriver::VRDriver::PipeThread()
                     auto addtracker = std::make_shared<TrackerDevice>(name, role);
                     this->AddDevice(addtracker);
                     this->trackers_.push_back(addtracker);
-                    addtracker->reinit(tracker_max_saved, tracker_max_time, tracker_smoothing);
+                    addtracker->reinit(tracker_max_saved, tracker_max_time, tracker_smoothing, tracker_use_velocity);
                     s = s + " added";
                 }
                 else if (word == "addstation")
@@ -266,11 +266,23 @@ void ExampleDriver::VRDriver::PipeThread()
                     iss >> msmooth;
                     
                     for (auto& device : this->trackers_)
-                        device->reinit(msaved,mtime,msmooth);
+                        device->reinit(msaved,mtime,msmooth, tracker_use_velocity);
 
                     tracker_max_saved = msaved;
                     tracker_max_time = mtime;
                     tracker_smoothing = msmooth;
+
+                    s = s + "  changed";
+                }
+                else if (word == "use_velocity")
+                {
+                    int use_velocity;
+                    iss >> use_velocity;
+
+                    tracker_use_velocity = use_velocity;
+
+                    for (auto& device : this->trackers_)
+                        device->reinit(tracker_max_saved, tracker_max_time, tracker_smoothing, tracker_use_velocity);
 
                     s = s + "  changed";
                 }

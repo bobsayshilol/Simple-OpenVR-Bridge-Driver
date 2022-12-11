@@ -30,7 +30,7 @@ std::string ExampleDriver::TrackerDevice::GetSerial()
     return this->serial_;
 }
 
-void ExampleDriver::TrackerDevice::reinit(int msaved, double mtime, double msmooth)
+void ExampleDriver::TrackerDevice::reinit(int msaved, double mtime, double msmooth, bool velocity)
 {
     std::lock_guard guard(pose_mutex);
 
@@ -46,8 +46,9 @@ void ExampleDriver::TrackerDevice::reinit(int msaved, double mtime, double msmoo
     prev_positions.resize(msaved);
     max_time = mtime;
     smoothing = msmooth;
+    use_velocity = velocity;
 
-    Log("Settings changed! " + std::to_string(msaved) + ' ' + std::to_string(mtime) + ' ' + std::to_string(msmooth));
+    Log("Settings changed! " + std::to_string(msaved) + ' ' + std::to_string(mtime) + ' ' + std::to_string(msmooth) + ' ' + std::to_string(velocity));
 }
 
 void ExampleDriver::TrackerDevice::Update()
@@ -65,10 +66,6 @@ void ExampleDriver::TrackerDevice::Update()
     // Update pose timestamp
     _pose_timestamp = time_now;
 
-    // Copy the previous position data
-    double previous_position[3] = { 0 };
-    std::copy(std::begin(pose.vecPosition), std::end(pose.vecPosition), std::begin(previous_position));
-
     PoseInfo next_pose, pose_rate;
     if (get_next_pose(Seconds(0), next_pose, &pose_rate) != 0)
         return;
@@ -82,7 +79,7 @@ void ExampleDriver::TrackerDevice::Update()
     }
 
     {
-        // Guard around uses of |smoothing|
+        // Guard around uses of |smoothing| and |use_velocity|
         std::lock_guard guard(pose_mutex);
 
         pose.vecPosition[0] = next_pose[0] * (1 - smoothing) + pose.vecPosition[0] * smoothing;
@@ -93,6 +90,11 @@ void ExampleDriver::TrackerDevice::Update()
         pose.qRotation.x = next_pose[4] * (1 - smoothing) + pose.qRotation.x * smoothing;
         pose.qRotation.y = next_pose[5] * (1 - smoothing) + pose.qRotation.y * smoothing;
         pose.qRotation.z = next_pose[6] * (1 - smoothing) + pose.qRotation.z * smoothing;
+
+        if (!use_velocity)
+        {
+            pose_rate.fill(0);
+        }
     }
 
     //normalize
@@ -157,7 +159,7 @@ int ExampleDriver::TrackerDevice::get_next_pose(Seconds time_offset, PoseInfo& n
         statuscode = 1;
     }
 
-    int curr_saved = 0;
+    size_t curr_saved = 0;
 
     double avg_time = 0;
     double avg_time2 = 0;
@@ -184,11 +186,11 @@ int ExampleDriver::TrackerDevice::get_next_pose(Seconds time_offset, PoseInfo& n
     avg_time2 /= curr_saved;
     const double st = std::sqrt(avg_time2 - avg_time * avg_time);
 
-    for (int i = 0; i < next_pose.size(); i++)
+    for (size_t i = 0; i < next_pose.size(); i++)
     {
         double avg_val = 0;
         double avg_tval = 0;
-        for (int ii = 0; ii < curr_saved; ii++)
+        for (size_t ii = 0; ii < curr_saved; ii++)
         {
             const PrevPose& prev_pose = prev_positions[ii];
             avg_val += prev_pose.pose[i];
@@ -202,6 +204,35 @@ int ExampleDriver::TrackerDevice::get_next_pose(Seconds time_offset, PoseInfo& n
 
         next_pose[i] = y;
         pose_rate[i] = -m; // -ve since |new_time| and |PrevPose::time| increase into the past
+    }
+
+    if (use_velocity)
+    {
+        // Velocity prediction only tested on position
+        for (size_t elem = 0; elem < 3; elem++)
+        {
+            double vel = 0;
+            double weights = 0;
+            for (size_t i = 0; i < curr_saved - 1; i++)
+            {
+                const PrevPose& now = prev_positions[i];
+                const PrevPose& prev = prev_positions[i + 1];
+
+                const double dx = now.pose[elem] - prev.pose[elem];
+                const double dt = now.time - prev.time;
+                const double weight = 1.0 / (1.0 + i);
+
+                vel += weight * dx / dt;
+                weights += weight;
+            }
+            vel /= weights;
+
+            const PrevPose& latest = prev_positions.front();
+            const double pos = latest.pose[elem] + vel * (new_time - latest.time);
+
+            next_pose[elem] = pos;
+            pose_rate[elem] = -vel; // -ve since |new_time| and |PrevPose::time| increase into the past
+        }
     }
 
     return statuscode;

@@ -40,7 +40,7 @@ namespace ExampleDriver {
             virtual void DebugRequest(const char* pchRequest, char* pchResponseBuffer, uint32_t unResponseBufferSize) override;
             virtual vr::DriverPose_t GetPose() override;
 
-            void reinit(int msaved, double mtime, double msmooth);
+            void reinit(int msaved, double mtime, double msmooth, bool use_velocity);
             void save_current_pose(double a, double b, double c, double qw, double qx, double qy, double qz, Seconds time_offset);
             int get_next_pose(Seconds time_offset, PoseInfo& next_pose, PoseInfo* pose_rate = nullptr) const;
 
@@ -63,6 +63,6 @@ namespace ExampleDriver {
         std::chrono::system_clock::time_point last_update;
         double max_time = 1;
         double smoothing = 0;
-
+        bool use_velocity = false;
     };
 };
