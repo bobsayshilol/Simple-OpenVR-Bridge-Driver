@@ -37,18 +37,21 @@ void ExampleDriver::TrackerDevice::reinit(int msaved, double mtime, double msmoo
     if (msaved < 5)     //prevent having too few values to calculate linear interpolation, and prevent crash on 0
         msaved = 5;
 
-    if (msmooth < 0)
+    if (msmooth < 0) {
         msmooth = 0;
-    else if (msmooth > 0.99)
+        use_velocity = true;
+    } else if (msmooth > 0.99) {
         msmooth = 0.99;
+        use_velocity = false;
+    }
 
     prev_positions.clear();
     prev_positions.resize(msaved);
     max_time = mtime;
     smoothing = msmooth;
-    use_velocity = velocity;
+    //use_velocity = velocity;
 
-    Log("Settings changed! " + std::to_string(msaved) + ' ' + std::to_string(mtime) + ' ' + std::to_string(msmooth) + ' ' + std::to_string(velocity));
+    Log("Settings changed! " + std::to_string(msaved) + ' ' + std::to_string(mtime) + ' ' + std::to_string(msmooth) + ' ' + std::to_string(use_velocity));
 }
 
 void ExampleDriver::TrackerDevice::Update()
